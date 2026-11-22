@@ -257,7 +257,7 @@ private fun PrivateWorkspace(onLock: () -> Unit, onExternalPickerState: (Boolean
             TextButton(onClick=onLock) { Text("Bloquear") }
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-            listOf("Feed","Favoritos","Galeria","Cofre","IA","Ajustes").forEach { item ->
+            listOf("Feed","Favoritos","Galeria","Cofre","Finanças","IA","Ajustes").forEach { item ->
                 FilterChip(selected=tab==item,onClick={tab=item},label={Text(item,fontSize=11.sp)})
             }
         }
@@ -307,6 +307,7 @@ private fun PrivateWorkspace(onLock: () -> Unit, onExternalPickerState: (Boolean
                     item { OutlinedButton(onClick={showAlbum=true},modifier=Modifier.fillMaxWidth()) { Text("Criar álbum") } }
                 }
             }
+            "Finanças" -> FinanceScreen(database.privateDao(),scope,{notice=it},Modifier.weight(1f))
             "IA" -> OfflineAssistantScreen(posts,media,vault)
             "Cofre" -> {
                 Row(Modifier.fillMaxWidth().padding(vertical=14.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
