@@ -321,12 +321,12 @@ private fun PostList(list:List<PostEntity>,repository:PrivateRepository,scope:ko
                     if(post.caption.isNotBlank()) Text(post.caption,color=Muted,fontSize=12.sp,modifier=Modifier.padding(top=6.dp))
                     val attached=post.attachmentUris.split("|").filter { it.isNotBlank() }
                     attached.forEachIndexed { index, rawUri ->
-                        TextButton(onClick={
+                        TextButton(onClick={scope.launch {
                             try {
-                                val uri=runBlocking { mediaStore.openForViewing(rawUri,"anexo") }
+                                val uri=mediaStore.openForViewing(rawUri,"anexo")
                                 context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                             } catch(e:Exception) { onNotice("Não foi possível abrir o anexo.") }
-                        }) { Text("Abrir anexo ${index+1}") }
+                        }}) { Text("Abrir anexo ${index+1}") }
                     }
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                         Text(DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(Date(post.createdAt)),color=Muted,fontSize=10.sp)
