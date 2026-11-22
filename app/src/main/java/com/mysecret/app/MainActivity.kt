@@ -308,7 +308,7 @@ private fun PrivateWorkspace(onLock: () -> Unit, onExternalPickerState: (Boolean
                 }
             }
             "Finanças" -> FinanceScreen(database.privateDao(),scope,{notice=it},Modifier.weight(1f))
-            "IA" -> OfflineAssistantScreen(posts,media,vault)
+            "IA" -> AiAssistantScreen(posts,media,vault,Modifier.weight(1f))
             "Cofre" -> {
                 Row(Modifier.fillMaxWidth().padding(vertical=14.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                     Text("Cofre privado",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold)
