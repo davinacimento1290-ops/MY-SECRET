@@ -9,6 +9,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.mysecret.app.security.BiometricUnlock
 import com.mysecret.app.security.RecoveryCodeManager
+import com.mysecret.app.security.PrivateMediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -131,6 +132,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val database=remember { PrivateDatabase.get(context) }
     val repository=remember { PrivateRepository(database.privateDao()) }
+    val mediaStore=remember { PrivateMediaStore(context) }
     val posts by repository.posts.collectAsStateWithLifecycle(initialValue=emptyList())
     val favorites by repository.favorites.collectAsStateWithLifecycle(initialValue=emptyList())
     val vault by repository.vault.collectAsStateWithLifecycle(initialValue=emptyList())
@@ -160,7 +162,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
                     if(index>=0 && cursor.moveToFirst()) cursor.getString(index) else "Arquivo"
                 } ?: "Arquivo"
                 val mime=context.contentResolver.getType(uri) ?: "application/octet-stream"
-                scope.launch { try { repository.addMedia(uri.toString(),displayName,mime);notice="Arquivo adicionado à galeria." } catch(e:Exception) { notice=e.message ?: "Falha ao adicionar." } }
+                scope.launch { try { repository.addMedia(mediaStore.importUri(uri),displayName,mime);notice="Arquivo adicionado à galeria." } catch(e:Exception) { notice=e.message ?: "Falha ao adicionar." } }
             } catch(e:Exception) { notice="Não foi possível manter acesso ao arquivo." }
         }
     }
@@ -197,7 +199,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
                     Button(onClick={showPost=true}) { Text("Nova +") }
                 }
                 val list=if(search.isBlank()) posts else searched
-                PostList(list,repository,scope,{notice=it})
+                PostList(list,repository,scope,mediaStore,{notice=it})
             }
             "Favoritos" -> {
                 Text("Seus favoritos",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(vertical=14.dp))
@@ -220,8 +222,8 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
                     items(media,key={it.id+1000000L}) { item -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Panel)) {
                         Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
                             Column(Modifier.weight(1f)) { Text(item.displayName,color=White,fontWeight=FontWeight.Bold);Text(item.mimeType,color=Muted,fontSize=11.sp) }
-                            TextButton(onClick={try { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(item.uri),item.mimeType).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch(e:Exception) { notice="Não foi possível abrir o arquivo." }}) { Text("Abrir") }
-                            TextButton(onClick={scope.launch { repository.deleteMedia(item);notice="Arquivo removido da galeria." }}) { Text("Excluir") }
+                            TextButton(onClick={scope.launch { try { val preview=mediaStore.openForViewing(item.uri,item.displayName);context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(preview,item.mimeType).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch(e:Exception) { notice=e.message ?: "Não foi possível abrir o arquivo." } }}) { Text("Abrir") }
+                            TextButton(onClick={scope.launch { try { mediaStore.delete(item.uri);repository.deleteMedia(item);notice="Arquivo privado excluído." } catch(e:Exception) { notice="Falha ao excluir arquivo." } }}) { Text("Excluir") }
                         }
                     } }
                     item { OutlinedButton(onClick={showAlbum=true},modifier=Modifier.fillMaxWidth()) { Text("Criar álbum") } }
@@ -276,7 +278,20 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
         if(uri!=null) scope.launch { try { backupManager?.importFrom(uri,backupPassword.toCharArray());notice="Backup restaurado." } catch(e:Exception) { notice=e.message ?: "Senha incorreta ou backup inválido." };backupPassword="" }
     },{backupMode="";confirmRestore=false;restoreUri=null})
     if(showPost) PostDialog(onDismiss={showPost=false},onSave={title,body,category,caption,attachments->
-        scope.launch { try { repository.addPost(title,body,category,caption,attachments); notice="Publicação salva."; } catch(e:Exception) { notice=e.message ?: "Falha ao salvar." } }
+        scope.launch { try {
+            val secureRefs=attachments.split("|").filter { it.isNotBlank() }.map { raw ->
+                val uri=Uri.parse(raw)
+                val name=context.contentResolver.query(uri,null,null,null,null)?.use { cursor ->
+                    val index=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if(index>=0 && cursor.moveToFirst()) cursor.getString(index) else "Anexo"
+                } ?: "Anexo"
+                val mime=context.contentResolver.getType(uri) ?: "application/octet-stream"
+                val secure=mediaStore.importUri(uri)
+                repository.addMedia(secure,name,mime)
+                secure
+            }
+            repository.addPost(title,body,category,caption,secureRefs.joinToString("|"));notice="Publicação salva com anexos criptografados."
+        } catch(e:Exception) { notice=e.message ?: "Falha ao salvar." } }
         showPost=false
     })
     if(showVault) VaultDialog(onDismiss={showVault=false},onSave={title,body,kind->
@@ -290,7 +305,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
 }
 
 @Composable
-private fun PostList(list:List<PostEntity>,repository:PrivateRepository,scope:kotlinx.coroutines.CoroutineScope,onNotice:(String)->Unit) {
+private fun PostList(list:List<PostEntity>,repository:PrivateRepository,scope:kotlinx.coroutines.CoroutineScope,mediaStore:PrivateMediaStore,onNotice:(String)->Unit) {
     val context=androidx.compose.ui.platform.LocalContext.current
     LazyColumn(verticalArrangement=Arrangement.spacedBy(10.dp)) {
         if(list.isEmpty()) item { EmptyCard("Nada por aqui ainda","Crie uma publicação ou ajuste sua pesquisa.") }
@@ -308,9 +323,8 @@ private fun PostList(list:List<PostEntity>,repository:PrivateRepository,scope:ko
                     attached.forEachIndexed { index, rawUri ->
                         TextButton(onClick={
                             try {
-                                val uri=Uri.parse(rawUri)
-                                val mime=context.contentResolver.getType(uri) ?: "*/*"
-                                context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                                val uri=runBlocking { mediaStore.openForViewing(rawUri,"anexo") }
+                                context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,"*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                             } catch(e:Exception) { onNotice("Não foi possível abrir o anexo.") }
                         }) { Text("Abrir anexo ${index+1}") }
                     }
