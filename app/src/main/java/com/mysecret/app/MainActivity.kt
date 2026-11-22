@@ -89,7 +89,7 @@ private fun MySecretRoot() {
                         Button(onClick={
                             if(recovery.verify(recoveryInput) && newPin.length in 4..12) {
                                 auth.configurePin(newPin.toCharArray()); recoveryCode=recovery.rotate()
-                                recoveryInput="";newPin="";recoverMode=false;unlocked=true;error=""
+                                recoveryInput="";newPin="";recoverMode=false;unlocked=false;error="Novo PIN criado. Guarde seu novo código de recuperação."
                             } else error="Código inválido ou PIN fora do limite."
                         },modifier=Modifier.fillMaxWidth().padding(top=8.dp)) { Text("Redefinir PIN") }
                         TextButton(onClick={recoverMode=false}) { Text("Voltar") }
@@ -98,7 +98,7 @@ private fun MySecretRoot() {
                         try {
                             if(isSetup) {
                                 if(pin.length !in 4..12 || pin!=confirmPin) error="Confira se os PINs são iguais e têm 4 a 12 números."
-                                else { auth.configurePin(pin.toCharArray()); isSetup=false; unlocked=true; error="" }
+                                else { auth.configurePin(pin.toCharArray()); isSetup=false; unlocked=false; error="Guarde o código de recuperação antes de entrar." }
                             } else {
                                 if(auth.verifyPin(pin.toCharArray())) { unlocked=true; error="" }
                                 else error="PIN incorreto ou limite de tentativas atingido."
