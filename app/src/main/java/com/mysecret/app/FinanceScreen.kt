@@ -73,23 +73,23 @@ internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (St
         item {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text("Controle financeiro", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("Seus dados financeiros ficam no banco local criptografado do secret.", color = Muted, fontSize = 12.sp)
+                Text("Seus dados financeiros ficam no banco local criptografado do secret.", color = Color(0xFFA3ADC0), fontSize = 12.sp)
             }
         }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151A29)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("RESUMO DESTE MÊS", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("RESUMO DESTE MÊS", color = Color(0xFFA3ADC0), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Text(money(balance), color = if (balance >= 0) FinanceGreen else FinanceRed, fontSize = 28.sp, fontWeight = FontWeight.Black)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column { Text("Receitas", color = Muted, fontSize = 11.sp); Text(money(income), color = FinanceGreen, fontWeight = FontWeight.Bold) }
-                        Column { Text("Despesas", color = Muted, fontSize = 11.sp); Text(money(expenses), color = FinanceRed, fontWeight = FontWeight.Bold) }
+                        Column { Text("Receitas", color = Color(0xFFA3ADC0), fontSize = 11.sp); Text(money(income), color = FinanceGreen, fontWeight = FontWeight.Bold) }
+                        Column { Text("Despesas", color = Color(0xFFA3ADC0), fontSize = 11.sp); Text(money(expenses), color = FinanceRed, fontWeight = FontWeight.Bold) }
                     }
                 }
             }
         }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151A29)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Nova movimentação", color = Color.White, fontWeight = FontWeight.Bold)
                     OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Descrição") }, singleLine = true)
@@ -118,14 +118,14 @@ internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (St
             }
         }
         item { Text("Movimentações", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-        if (transactions.isEmpty()) item { EmptyCard("Sem movimentações", "Registre sua primeira receita ou despesa.") }
+        if (transactions.isEmpty()) item { FinanceEmptyCard("Sem movimentações", "Registre sua primeira receita ou despesa.") }
         items(transactions, key = { it.id }) { item ->
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151A29)), modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text(item.title, color = Color.White, fontWeight = FontWeight.Bold)
-                        Text("${item.category} • ${dateFormat.format(Date(item.occurredAt))}", color = Muted, fontSize = 11.sp)
-                        if (item.note.isNotBlank()) Text(item.note, color = Muted, fontSize = 11.sp)
+                        Text("${item.category} • ${dateFormat.format(Date(item.occurredAt))}", color = Color(0xFFA3ADC0), fontSize = 11.sp)
+                        if (item.note.isNotBlank()) Text(item.note, color = Color(0xFFA3ADC0), fontSize = 11.sp)
                     }
                     Column {
                         Text((if (item.type == "INCOME") "+" else "−") + money(item.amountCents), color = if (item.type == "INCOME") FinanceGreen else FinanceRed, fontWeight = FontWeight.Bold)
@@ -135,7 +135,7 @@ internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (St
             }
         }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151A29)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Metas de economia", color = Color.White, fontWeight = FontWeight.Bold)
                     OutlinedTextField(goalTitle, { goalTitle = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Nome da meta") }, singleLine = true)
@@ -154,10 +154,10 @@ internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (St
         if (goals.isNotEmpty()) item { Text("Suas metas", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
         items(goals, key = { "goal-${it.id}" }) { goal ->
             val progress = (goal.savedCents.toFloat() / goal.targetCents.toFloat()).coerceIn(0f, 1f)
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151A29)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(goal.title, color = Color.White, fontWeight = FontWeight.Bold)
-                    Text("${money(goal.savedCents)} de ${money(goal.targetCents)}", color = Muted, fontSize = 12.sp)
+                    Text("${money(goal.savedCents)} de ${money(goal.targetCents)}", color = Color(0xFFA3ADC0), fontSize = 12.sp)
                     LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(contribution, { contribution = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Adicionar à meta (R$)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -176,7 +176,7 @@ internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (St
             }
         }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151A29)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Contas e vencimentos", color = Color.White, fontWeight = FontWeight.Bold)
                     OutlinedTextField(billTitle, { billTitle = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Nome da conta") }, singleLine = true)
@@ -198,11 +198,11 @@ internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (St
         }
         if (bills.isNotEmpty()) item { Text("Contas cadastradas", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
         items(bills, key = { "bill-${it.id}" }) { bill ->
-            Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151A29)), modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text(bill.title, color = Color.White, fontWeight = FontWeight.Bold)
-                        Text("${money(bill.amountCents)} • vence ${dateFormat.format(Date(bill.dueAt))}", color = Muted, fontSize = 11.sp)
+                        Text("${money(bill.amountCents)} • vence ${dateFormat.format(Date(bill.dueAt))}", color = Color(0xFFA3ADC0), fontSize = 11.sp)
                         Text(if (bill.paid) "Paga" else "Pendente", color = if (bill.paid) FinanceGreen else FinanceRed, fontSize = 11.sp)
                     }
                     Column {
@@ -213,7 +213,18 @@ internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (St
             }
         }
         item {
-            Text("Os valores são registros manuais. O secret não acessa contas bancárias nem realiza pagamentos.", color = Muted, fontSize = 11.sp)
+            Text("Os valores são registros manuais. O secret não acessa contas bancárias nem realiza pagamentos.", color = Color(0xFFA3ADC0), fontSize = 11.sp)
+        }
+    }
+}
+
+
+@Composable
+private fun FinanceEmptyCard(title: String, description: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF151A29)), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp)) {
+            Text(title, color = Color.White, fontWeight = FontWeight.Bold)
+            Text(description, color = Color(0xFFA3ADC0), modifier = Modifier.padding(top = 6.dp))
         }
     }
 }
