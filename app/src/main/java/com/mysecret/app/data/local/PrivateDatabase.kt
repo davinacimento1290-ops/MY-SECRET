@@ -10,7 +10,7 @@ import com.mysecret.app.security.DatabaseKeyManager
 @Database(
     entities = [PostEntity::class, VaultItemEntity::class, AlbumEntity::class],
     version = 1,
-    exportSchema = true
+    exportSchema = false
 )
 abstract class PrivateDatabase : RoomDatabase() {
     abstract fun privateDao(): PrivateDao
@@ -27,7 +27,6 @@ abstract class PrivateDatabase : RoomDatabase() {
                     PrivateDatabase::class.java,
                     "my_secret_private.db"
                 ).openHelperFactory(SupportFactory(key))
-                    .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }
             }
