@@ -7,6 +7,7 @@ class PrivateRepository(private val dao: PrivateDao) {
     val posts: Flow<List<PostEntity>> = dao.observePosts()
     val vault: Flow<List<VaultItemEntity>> = dao.observeVault()
     val albums: Flow<List<AlbumEntity>> = dao.observeAlbums()
+    val media: Flow<List<MediaEntity>> = dao.observeMedia()
     val favorites: Flow<List<PostEntity>> = dao.observeFavorites()
 
     fun search(query: String): Flow<List<PostEntity>> = dao.searchPosts(query.trim())
@@ -21,6 +22,11 @@ class PrivateRepository(private val dao: PrivateDao) {
     suspend fun toggleFavorite(post: PostEntity) = dao.toggleFavorite(post.id)
     suspend fun deletePost(post: PostEntity) = dao.deletePost(post)
     suspend fun deleteVault(item: VaultItemEntity) = dao.deleteVaultItem(item)
+    suspend fun addMedia(uri: String, displayName: String, mimeType: String) {
+        require(uri.isNotBlank()) { "Arquivo inválido." }
+        dao.saveMedia(MediaEntity(uri=uri,displayName=displayName,mimeType=mimeType))
+    }
+    suspend fun deleteMedia(item: MediaEntity) = dao.deleteMedia(item)
     suspend fun addAlbum(name: String, description: String) {
         require(name.isNotBlank()) { "Informe o nome do álbum." }
         dao.saveAlbum(AlbumEntity(name=name,description=description))
