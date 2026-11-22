@@ -2,6 +2,8 @@ package com.mysecret.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -99,7 +101,15 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
     var showAlbum by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
     var backupManager by remember { mutableStateOf<EncryptedBackupManager?>(null) }
+    var restoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var confirmRestore by remember { mutableStateOf(false) }
     LaunchedEffect(database) { backupManager=EncryptedBackupManager(context,database.privateDao()) }
+    val exportLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if(uri!=null) scope.launch { try { backupManager?.exportTo(uri); notice="Backup criptografado exportado." } catch(e:Exception) { notice=e.message ?: "Falha ao exportar backup." } }
+    }
+    val importLauncher=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if(uri!=null) { restoreUri=uri; confirmRestore=true }
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal=18.dp)) {
         Row(Modifier.fillMaxWidth().padding(top=18.dp,bottom=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
@@ -181,13 +191,27 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
                     }
                 }
                 Text("Backup criptografado",color=White,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=18.dp,bottom=8.dp))
-                Text("Nesta versão, o backup só pode ser restaurado no aparelho que possui a chave de backup original.",color=Muted,fontSize=12.sp)
-                Button(onClick={notice="Use o seletor de arquivos na próxima atualização para exportar o backup."},modifier=Modifier.padding(top=8.dp)) { Text("Exportar backup — em integração") }
+                Text("O arquivo é protegido por AES-GCM. A restauração exige a chave original deste aparelho nesta versão.",color=Muted,fontSize=12.sp)
+                Button(onClick={exportLauncher.launch("MY_SECRET_backup.mys")},modifier=Modifier.padding(top=8.dp)) { Text("Exportar backup") }
+                OutlinedButton(onClick={importLauncher.launch(arrayOf("application/octet-stream","application/*"))},modifier=Modifier.padding(top=8.dp)) { Text("Restaurar backup") }
                 TextButton(onClick=onLock) { Text("Bloquear aplicativo") }
             }
         }
         Spacer(Modifier.weight(1f))
         Text("Armazenamento local • MY SECRET",color=Muted,fontSize=11.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(vertical=10.dp))
+    }
+    if(confirmRestore && restoreUri!=null) {
+        AlertDialog(
+            onDismissRequest={confirmRestore=false;restoreUri=null},
+            title={Text("Substituir dados atuais?")},
+            text={Text("A restauração substitui publicações, itens do cofre e álbuns existentes. Faça um backup antes de continuar.")},
+            confirmButton={TextButton(onClick={
+                val uri=restoreUri
+                confirmRestore=false;restoreUri=null
+                if(uri!=null) scope.launch { try { backupManager?.importFrom(uri); notice="Backup restaurado." } catch(e:Exception) { notice=e.message ?: "Falha ao restaurar backup." } }
+            }) { Text("Restaurar") }},
+            dismissButton={TextButton(onClick={confirmRestore=false;restoreUri=null}) { Text("Cancelar") }}
+        )
     }
     if(showPost) PostDialog(onDismiss={showPost=false},onSave={title,body,category,caption->
         scope.launch { try { repository.addPost(title,body,category,caption); notice="Publicação salva."; } catch(e:Exception) { notice=e.message ?: "Falha ao salvar." } }
