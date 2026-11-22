@@ -11,9 +11,9 @@ class PrivateRepository(private val dao: PrivateDao) {
     val favorites: Flow<List<PostEntity>> = dao.observeFavorites()
 
     fun search(query: String): Flow<List<PostEntity>> = dao.searchPosts(query.trim())
-    suspend fun addPost(title: String, body: String, category: String, caption: String = "") {
+    suspend fun addPost(title: String, body: String, category: String, caption: String = "", attachmentUris: String = "") {
         require(title.isNotBlank() || body.isNotBlank()) { "Escreva um título ou conteúdo." }
-        dao.savePost(PostEntity(title=title.ifBlank { "Sem título" },body=body,category=category,caption=caption))
+        dao.savePost(PostEntity(title=title.ifBlank { "Sem título" },body=body,category=category,caption=caption,attachmentUris=attachmentUris))
     }
     suspend fun addVaultItem(title: String, content: String, kind: String) {
         require(title.isNotBlank() && content.isNotBlank()) { "Preencha título e conteúdo." }
