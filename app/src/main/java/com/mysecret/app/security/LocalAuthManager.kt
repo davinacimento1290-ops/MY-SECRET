@@ -65,13 +65,13 @@ class LocalAuthManager(context: Context) {
         if (!prefs.contains("secret_hash")) configureSecretAnswerIfMissing()
         val now = System.currentTimeMillis()
         if (now < prefs.getLong("secret_lock_until", 0L)) {
-            answer.fill('\\u0000')
+            answer.fill(0.toChar())
             return false
         }
         val salt = Base64.decode(prefs.getString("secret_salt", "")!!, Base64.NO_WRAP)
         val expected = Base64.decode(prefs.getString("secret_hash", "")!!, Base64.NO_WRAP)
         val actual = derive(answer, salt)
-        answer.fill('\\u0000')
+        answer.fill(0.toChar())
         val ok = java.security.MessageDigest.isEqual(expected, actual)
         if (ok) {
             prefs.edit().putInt("secret_failed_attempts", 0).putLong("secret_lock_until", 0L).apply()
