@@ -21,9 +21,11 @@ Aplicativo Android privado para organizar publicações, anexos, notas, favorito
 - Galeria e álbuns com seleção de arquivos pelo seletor do Android.
 - Arquivos importados copiados para o armazenamento interno do app e criptografados com AES-GCM por chave protegida no Android Keystore.
 - Cofre de notas, links e informações.
+- Controle financeiro local: receitas, despesas, categorias, histórico, resumo mensal, metas de economia e contas com vencimento.
+- Movimentações financeiras armazenadas no banco Room/SQLCipher, incluídas no backup criptografado e na restauração.
 - Backup AES-GCM com senha definida pelo usuário, incluindo registros e bytes dos arquivos de mídia.
 - Restauração do backup em outro aparelho, recriptografando os anexos com a chave local do novo aparelho.
-- Migração Room 1 para 2 sem apagar as tabelas anteriores.
+- Migrações Room 1 para 2 e 2 para 3 sem apagar as tabelas anteriores.
 
 ## Limitações e validações restantes
 - A pré-visualização de anexos cria uma cópia temporária descriptografada no cache para que outro aplicativo possa abrir o arquivo; essa cópia é removida ao abrir outra pré-visualização ou quando o cache for limpo pelo Android.
@@ -35,4 +37,4 @@ Aplicativo Android privado para organizar publicações, anexos, notas, favorito
 ## Compilação
 GitHub Actions executa `gradle :app:assembleDebug` com JDK 17 e Gradle 8.9. O APK de depuração fica em `app/build/outputs/apk/debug/app-debug.apk` e é publicado como artefato do workflow.
 
-**Estado:** implementação avançada em validação. Build de depuração precisa estar verde no commit mais recente antes de considerar o APK pronto.
+**Estado:** módulo financeiro integrado ao código; compilação e testes do commit atual ainda precisam ser confirmados pelo GitHub Actions antes de considerar o APK pronto.
