@@ -41,6 +41,21 @@ interface PrivateDao {
     @Delete
     suspend fun deleteAlbum(album: AlbumEntity)
 
+    @Query("SELECT * FROM media_items ORDER BY addedAt DESC")
+    fun observeMedia(): Flow<List<MediaEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveMedia(item: MediaEntity): Long
+
+    @Delete
+    suspend fun deleteMedia(item: MediaEntity)
+
+    @Query("SELECT * FROM media_items ORDER BY addedAt ASC")
+    suspend fun allMedia(): List<MediaEntity>
+
+    @Query("DELETE FROM media_items")
+    suspend fun clearMedia()
+
     @Query("SELECT * FROM posts ORDER BY createdAt ASC")
     suspend fun allPosts(): List<PostEntity>
 
