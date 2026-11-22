@@ -143,9 +143,12 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
     var backupManager by remember { mutableStateOf<EncryptedBackupManager?>(null) }
     var restoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var confirmRestore by remember { mutableStateOf(false) }
+    var backupPassword by remember { mutableStateOf("") }
+    var backupPasswordConfirm by remember { mutableStateOf("") }
+    var backupMode by remember { mutableStateOf("") }
     LaunchedEffect(database) { backupManager=EncryptedBackupManager(context,database.privateDao()) }
     val exportLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        if(uri!=null) scope.launch { try { backupManager?.exportTo(uri); notice="Backup criptografado exportado." } catch(e:Exception) { notice=e.message ?: "Falha ao exportar backup." } }
+        if(uri!=null) scope.launch { try { backupManager?.exportTo(uri,backupPassword.toCharArray()); notice="Backup criptografado exportado." } catch(e:Exception) { notice=e.message ?: "Falha ao exportar backup." } }
     }
     val importLauncher=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if(uri!=null) { restoreUri=uri; confirmRestore=true }
@@ -227,13 +230,13 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
                     Column(Modifier.padding(16.dp)) {
                         Text("Segurança local",color=White,fontWeight=FontWeight.Bold)
                         Text("PIN protegido por PBKDF2. Banco de dados criptografado com SQLCipher e chave protegida pelo Android Keystore.",color=Muted,modifier=Modifier.padding(top=6.dp))
-                        Text("Biometria e recuperação segura ainda não foram integradas.",color=Color(0xFFFFCC80),modifier=Modifier.padding(top=8.dp),fontSize=12.sp)
+                        Text("Biometria vinculada à operação criptográfica, código de recuperação e bloqueio automático ao sair do app.",color=Muted,modifier=Modifier.padding(top=8.dp),fontSize=12.sp)
                     }
                 }
                 Text("Backup criptografado",color=White,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=18.dp,bottom=8.dp))
-                Text("O arquivo é protegido por AES-GCM. A restauração exige a chave original deste aparelho nesta versão.",color=Muted,fontSize=12.sp)
-                Button(onClick={exportLauncher.launch("MY_SECRET_backup.mys")},modifier=Modifier.padding(top=8.dp)) { Text("Exportar backup") }
-                OutlinedButton(onClick={importLauncher.launch(arrayOf("application/octet-stream","application/*"))},modifier=Modifier.padding(top=8.dp)) { Text("Restaurar backup") }
+                Text("Backup AES-GCM protegido por senha definida por você; pode ser restaurado em outro aparelho.",color=Muted,fontSize=12.sp)
+                Button(onClick={backupMode="export";backupPassword="";backupPasswordConfirm=""},modifier=Modifier.padding(top=8.dp)) { Text("Exportar backup") }
+                OutlinedButton(onClick={backupMode="import";backupPassword="";importLauncher.launch(arrayOf("application/octet-stream","application/*"))},modifier=Modifier.padding(top=8.dp)) { Text("Restaurar backup") }
                 TextButton(onClick=onLock) { Text("Bloquear aplicativo") }
             }
         }
@@ -248,11 +251,19 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
             confirmButton={TextButton(onClick={
                 val uri=restoreUri
                 confirmRestore=false;restoreUri=null
-                if(uri!=null) scope.launch { try { backupManager?.importFrom(uri); notice="Backup restaurado." } catch(e:Exception) { notice=e.message ?: "Falha ao restaurar backup." } }
+                if(uri!=null) scope.launch { try { backupManager?.importFrom(uri,backupPassword.toCharArray()); notice="Backup restaurado." } catch(e:Exception) { notice=e.message ?: "Falha ao restaurar backup." } }
             }) { Text("Restaurar") }},
             dismissButton={TextButton(onClick={confirmRestore=false;restoreUri=null}) { Text("Cancelar") }}
         )
     }
+    if(backupMode=="export") PasswordDialog("Criar senha do backup",backupPassword,backupPasswordConfirm,{backupPassword=it},{backupPasswordConfirm=it},{
+        if(backupPassword.length<10 || backupPassword!=backupPasswordConfirm) notice="As senhas devem ser iguais e ter pelo menos 10 caracteres."
+        else { backupMode="";exportLauncher.launch("MY_SECRET_backup.mys") }
+    },{backupMode=""})
+    if(backupMode=="import" && confirmRestore && restoreUri!=null) PasswordDialog("Senha do backup",backupPassword,backupPassword,{backupPassword=it},{backupPassword=it},{
+        val uri=restoreUri;confirmRestore=false;restoreUri=null;backupMode=""
+        if(uri!=null) scope.launch { try { backupManager?.importFrom(uri,backupPassword.toCharArray());notice="Backup restaurado." } catch(e:Exception) { notice=e.message ?: "Senha incorreta ou backup inválido." };backupPassword="" }
+    },{backupMode="";confirmRestore=false;restoreUri=null})
     if(showPost) PostDialog(onDismiss={showPost=false},onSave={title,body,category,caption->
         scope.launch { try { repository.addPost(title,body,category,caption); notice="Publicação salva."; } catch(e:Exception) { notice=e.message ?: "Falha ao salvar." } }
         showPost=false
@@ -336,4 +347,12 @@ private fun AlbumDialog(onDismiss:()->Unit,onSave:(String,String)->Unit) {
             OutlinedTextField(description,{description=it},label={Text("Descrição")})
         }
     },confirmButton={TextButton(onClick={onSave(name,description)}) { Text("Criar") }},dismissButton={TextButton(onClick=onDismiss) { Text("Cancelar") }})
+}
+
+@Composable
+private fun PasswordDialog(title:String,password:String,confirmation:String,onPassword:(String)->Unit,onConfirmation:(String)->Unit,onConfirm:()->Unit,onDismiss:()->Unit) {
+    AlertDialog(onDismissRequest=onDismiss,title={Text(title)},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(password,onPassword,label={Text("Senha (mínimo 10 caracteres)")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
+        if(title.contains("Criar")) OutlinedTextField(confirmation,onConfirmation,label={Text("Confirme a senha")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
+    }},confirmButton={TextButton(onClick=onConfirm) { Text(if(title.contains("Criar")) "Continuar" else "Restaurar") }},dismissButton={TextButton(onClick=onDismiss) { Text("Cancelar") }})
 }
