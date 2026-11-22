@@ -54,7 +54,7 @@ class MainActivity : FragmentActivity() {
 @Composable
 private fun MySecretRoot() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val auth = remember { LocalAuthManager(context) }
+    val auth = remember { LocalAuthManager(context).apply { configureSecretAnswerIfMissing() } }
     val recovery = remember { RecoveryCodeManager(context) }
     val biometric = remember { BiometricUnlock(context as FragmentActivity) }
     var recoveryCode by remember { mutableStateOf(recovery.createIfMissing()) }
@@ -62,9 +62,27 @@ private fun MySecretRoot() {
     var recoveryInput by remember { mutableStateOf("") }
     var newPin by remember { mutableStateOf("") }
     var unlocked by remember { mutableStateOf(false) }
+    var pendingSecondFactor by remember { mutableStateOf(false) }
+    var secretAnswer by remember { mutableStateOf("") }
+    var backgroundAt by remember { mutableLongStateOf(0L) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) unlocked = false }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> backgroundAt = System.currentTimeMillis()
+                Lifecycle.Event.ON_START -> {
+                    if (backgroundAt > 0L) {
+                        if (System.currentTimeMillis() - backgroundAt >= 5L * 60L * 1000L) {
+                            unlocked = false
+                            pendingSecondFactor = false
+                            secretAnswer = ""
+                        }
+                        backgroundAt = 0L
+                    }
+                }
+                else -> Unit
+            }
+        }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
@@ -78,7 +96,32 @@ private fun MySecretRoot() {
                 Column(Modifier.fillMaxSize().padding(26.dp), horizontalAlignment=Alignment.CenterHorizontally, verticalArrangement=Arrangement.Center) {
                     Text("MY SECRET", color=White, fontSize=34.sp, fontWeight=FontWeight.Black)
                     Text(if (isSetup) "Crie seu acesso privado" else "Seu espaço pessoal", color=Muted, modifier=Modifier.padding(top=8.dp,bottom=28.dp))
-                    if(!recoverMode) {
+                    if (pendingSecondFactor) {
+                        Text("VERIFICAÇÃO ADICIONAL",color=Accent,fontSize=13.sp,fontWeight=FontWeight.Bold)
+                        Text("Quantos anos você tem?",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=14.dp))
+                        OutlinedTextField(
+                            value=secretAnswer,
+                            onValueChange={if(it.length<=8 && it.all(Char::isDigit)) secretAnswer=it},
+                            label={Text("Resposta secreta")},
+                            singleLine=true,
+                            visualTransformation=PasswordVisualTransformation(),
+                            keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword),
+                            modifier=Modifier.fillMaxWidth().padding(top=10.dp)
+                        )
+                        if(error.isNotBlank()) Text(error,color=Color(0xFFFF8585),modifier=Modifier.padding(top=10.dp))
+                        Button(onClick={
+                            if (auth.verifySecretAnswer(secretAnswer.toCharArray())) {
+                                unlocked=true
+                                pendingSecondFactor=false
+                                secretAnswer=""
+                                error=""
+                            } else {
+                                secretAnswer=""
+                                error=if(auth.secretRemainingLockMillis()>0L) "Senha secreta bloqueada temporariamente. Tente mais tarde." else "Resposta secreta incorreta."
+                            }
+                        },modifier=Modifier.fillMaxWidth().padding(top=18.dp),shape=RoundedCornerShape(14.dp)) { Text("Confirmar resposta") }
+                        TextButton(onClick={pendingSecondFactor=false;secretAnswer="";pin="";error=""}) { Text("Voltar ao login") }
+                    } else if(!recoverMode) {
                     OutlinedTextField(value=pin,onValueChange={if(it.length<=12 && it.all(Char::isDigit)) pin=it},label={Text("PIN de 4 a 12 números")},singleLine=true,visualTransformation=PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword))
                     if(isSetup) {
                         OutlinedTextField(value=confirmPin,onValueChange={if(it.length<=12 && it.all(Char::isDigit)) confirmPin=it},label={Text("Confirme o PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword),modifier=Modifier.padding(top=10.dp))
@@ -95,23 +138,23 @@ private fun MySecretRoot() {
                         },modifier=Modifier.fillMaxWidth().padding(top=8.dp)) { Text("Redefinir PIN") }
                         TextButton(onClick={recoverMode=false}) { Text("Voltar") }
                     }
-                    Button(onClick={
+                    if (!pendingSecondFactor && !recoverMode) Button(onClick={
                         try {
                             if(isSetup) {
                                 if(pin.length !in 4..12 || pin!=confirmPin) error="Confira se os PINs são iguais e têm 4 a 12 números."
                                 else { auth.configurePin(pin.toCharArray()); isSetup=false; unlocked=false; error="Guarde o código de recuperação antes de entrar." }
                             } else {
-                                if(auth.verifyPin(pin.toCharArray())) { unlocked=true; error="" }
+                                if(auth.verifyPin(pin.toCharArray())) { pendingSecondFactor=true; error="" }
                                 else error="PIN incorreto ou limite de tentativas atingido."
                             }
                             pin=""; confirmPin=""
                         } catch(e:Exception) { error=e.message ?: "Não foi possível configurar o acesso." }
                     },modifier=Modifier.fillMaxWidth().padding(top=18.dp),shape=RoundedCornerShape(14.dp)) { Text(if(isSetup) "Criar acesso" else "Desbloquear") }
-                    if(!isSetup && !recoverMode && biometric.canUse()) OutlinedButton(onClick={
-                        biometric.authenticate { ok, msg -> if(ok) unlocked=true else if(!msg.isNullOrBlank() && !msg.contains("cancel",true)) error=msg }
+                    if(!isSetup && !recoverMode && !pendingSecondFactor && biometric.canUse()) OutlinedButton(onClick={
+                        biometric.authenticate { ok, msg -> if(ok) { pendingSecondFactor=true; error="" } else if(!msg.isNullOrBlank() && !msg.contains("cancel",true)) error=msg }
                     },modifier=Modifier.fillMaxWidth().padding(top=8.dp)) { Text("Desbloquear com biometria") }
-                    if(!isSetup && !recoverMode) TextButton(onClick={recoverMode=true;error=""}) { Text("Esqueci meu PIN") }
-                    if(recoveryCode!=null) Card(Modifier.fillMaxWidth().padding(top=10.dp),colors=CardDefaults.cardColors(containerColor=Panel)) {
+                    if(!isSetup && !recoverMode && !pendingSecondFactor) TextButton(onClick={recoverMode=true;error=""}) { Text("Esqueci meu PIN") }
+                    if(recoveryCode!=null && !pendingSecondFactor) Card(Modifier.fillMaxWidth().padding(top=10.dp),colors=CardDefaults.cardColors(containerColor=Panel)) {
                         Column(Modifier.padding(12.dp)) {
                             Text("CÓDIGO DE RECUPERAÇÃO — GUARDE EM LOCAL SEGURO",color=Color(0xFFFFD180),fontSize=11.sp,fontWeight=FontWeight.Bold)
                             Text(recoveryCode!!,color=White,fontWeight=FontWeight.Bold,modifier=Modifier.padding(vertical=6.dp))
@@ -121,7 +164,7 @@ private fun MySecretRoot() {
                     Text("Os dados ficam no armazenamento local do aparelho.",color=Muted,fontSize=12.sp,modifier=Modifier.padding(top=20.dp))
                 }
             } else {
-                PrivateWorkspace(onLock={unlocked=false;pin=""})
+                PrivateWorkspace(onLock={unlocked=false;pin="";pendingSecondFactor=false;secretAnswer=""})
             }
         }
     }
@@ -156,7 +199,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
     val mediaPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         uris.forEach { uri ->
             try {
-                context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                try { context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_:Exception) { }
                 val displayName=context.contentResolver.query(uri,null,null,null,null)?.use { cursor ->
                     val index=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     if(index>=0 && cursor.moveToFirst()) cursor.getString(index) else "Arquivo"
@@ -209,7 +252,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
             "Galeria" -> {
                 Row(Modifier.fillMaxWidth().padding(vertical=12.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                     Text("Galeria privada",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold)
-                    Button(onClick={mediaPicker.launch(arrayOf("image/*","video/*","application/pdf","text/*"))}) { Text("Adicionar") }
+                    Button(onClick={mediaPicker.launch(arrayOf("*/*"))}) { Text("Adicionar") }
                 }
                 LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     item { Text("Álbuns",color=Accent,fontWeight=FontWeight.Bold) }
@@ -355,7 +398,7 @@ private fun PostDialog(onDismiss:()->Unit,onSave:(String,String,String,String,St
     var attachments by remember { mutableStateOf(listOf<android.net.Uri>()) }
     val context=androidx.compose.ui.platform.LocalContext.current
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { selected ->
-        selected.forEach { uri -> try { context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch(_:Exception) { } }
+        selected.forEach { uri -> try { context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch(_:Exception) { /* O acesso temporário ainda permite copiar o arquivo ao salvar. */ } }
         attachments=selected
     }
     AlertDialog(onDismissRequest=onDismiss,title={Text("Nova publicação")},text={
@@ -364,7 +407,7 @@ private fun PostDialog(onDismiss:()->Unit,onSave:(String,String,String,String,St
             OutlinedTextField(body,{body=it},label={Text("Texto ou conteúdo")},minLines=3)
             OutlinedTextField(caption,{caption=it},label={Text("Legenda (opcional)")})
             OutlinedTextField(category,{category=it},label={Text("Categoria")},singleLine=true)
-            OutlinedButton(onClick={picker.launch(arrayOf("image/*","video/*","application/pdf","text/*"))}) { Text("Anexar fotos/documentos (${attachments.size})") }
+            OutlinedButton(onClick={picker.launch(arrayOf("*/*"))}) { Text("Anexar fotos/documentos (${attachments.size})") }
         }
     },confirmButton={TextButton(onClick={onSave(title,body,category,caption,attachments.joinToString("|") { it.toString() })}) { Text("Salvar") }},dismissButton={TextButton(onClick=onDismiss) { Text("Cancelar") }})
 }
