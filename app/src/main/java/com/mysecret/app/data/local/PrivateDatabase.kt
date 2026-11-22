@@ -8,8 +8,8 @@ import net.sqlcipher.database.SupportFactory
 import com.mysecret.app.security.DatabaseKeyManager
 
 @Database(
-    entities = [PostEntity::class, VaultItemEntity::class, AlbumEntity::class],
-    version = 1,
+    entities = [PostEntity::class, VaultItemEntity::class, AlbumEntity::class, MediaEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class PrivateDatabase : RoomDatabase() {
