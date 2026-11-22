@@ -38,7 +38,7 @@ private fun money(cents: Long): String =
     NumberFormat.getCurrencyInstance(Locale("pt", "BR")).format(cents / 100.0)
 
 @Composable
-internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (String) -> Unit) {
+internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (String) -> Unit, modifier: Modifier = Modifier) {
     val transactions by dao.observeFinanceTransactions().collectAsState(initial = emptyList())
     val goals by dao.observeFinanceGoals().collectAsState(initial = emptyList())
     val bills by dao.observeFinanceBills().collectAsState(initial = emptyList())
@@ -66,7 +66,7 @@ internal fun FinanceScreen(dao: PrivateDao, scope: CoroutineScope, onNotice: (St
     val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")) }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
