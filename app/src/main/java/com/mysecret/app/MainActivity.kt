@@ -204,7 +204,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
             "Favoritos" -> {
                 Text("Seus favoritos",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(vertical=14.dp))
                 val list=(if(search.isBlank()) favorites else searched.filter { it.favorite })
-                PostList(list,repository,scope,{notice=it})
+                PostList(list,repository,scope,mediaStore,{notice=it})
             }
             "Galeria" -> {
                 Row(Modifier.fillMaxWidth().padding(vertical=12.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
