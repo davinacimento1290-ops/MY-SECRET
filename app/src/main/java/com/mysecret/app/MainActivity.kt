@@ -1,6 +1,8 @@
 package com.mysecret.app
 
 import android.os.Bundle
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.content.Intent
 import android.provider.OpenableColumns
 import android.net.Uri
@@ -14,6 +16,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +29,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -34,7 +41,9 @@ import com.mysecret.app.backup.EncryptedBackupManager
 import com.mysecret.app.data.local.*
 import com.mysecret.app.data.repository.PrivateRepository
 import com.mysecret.app.security.LocalAuthManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
 
@@ -201,6 +210,7 @@ private fun PrivateWorkspace(onLock: () -> Unit, onExternalPickerState: (Boolean
     var backupPassword by remember { mutableStateOf("") }
     var backupPasswordConfirm by remember { mutableStateOf("") }
     var backupMode by remember { mutableStateOf("") }
+    var downloadTarget by remember { mutableStateOf<MediaEntity?>(null) }
     LaunchedEffect(database) { backupManager=EncryptedBackupManager(context,database.privateDao()) }
     val mediaPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         onExternalPickerState(false)
@@ -224,6 +234,19 @@ private fun PrivateWorkspace(onLock: () -> Unit, onExternalPickerState: (Boolean
         onExternalPickerState(false)
         if(uri!=null) { restoreUri=uri; confirmRestore=true }
     }
+    val downloadLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        onExternalPickerState(false)
+        val target=downloadTarget
+        downloadTarget=null
+        if(uri!=null && target!=null) scope.launch {
+            try {
+                val bytes=mediaStore.exportBytes(target.uri)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: error("Não foi possível gravar o arquivo.")
+                bytes.fill(0)
+                notice="Download salvo com sucesso."
+            } catch(e:Exception) { notice=e.message ?: "Falha ao baixar o arquivo." }
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal=18.dp)) {
         Row(Modifier.fillMaxWidth().padding(top=18.dp,bottom=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
@@ -233,8 +256,8 @@ private fun PrivateWorkspace(onLock: () -> Unit, onExternalPickerState: (Boolean
             }
             TextButton(onClick=onLock) { Text("Bloquear") }
         }
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-            listOf("Feed","Favoritos","Galeria","Cofre","Ajustes").forEach { item ->
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            listOf("Feed","Favoritos","Galeria","Cofre","IA","Ajustes").forEach { item ->
                 FilterChip(selected=tab==item,onClick={tab=item},label={Text(item,fontSize=11.sp)})
             }
         }
@@ -272,15 +295,19 @@ private fun PrivateWorkspace(onLock: () -> Unit, onExternalPickerState: (Boolean
                     item { Text("Fotos, vídeos e documentos",color=Accent,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=10.dp)) }
                     if(media.isEmpty()) item { EmptyCard("Galeria vazia","Adicione arquivos usando o seletor seguro do Android.") }
                     items(media,key={it.id+1000000L}) { item -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Panel)) {
-                        Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) { Text(item.displayName,color=White,fontWeight=FontWeight.Bold);Text(item.mimeType,color=Muted,fontSize=11.sp) }
-                            TextButton(onClick={scope.launch { try { val preview=mediaStore.openForViewing(item.uri,item.displayName);context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(preview,item.mimeType).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch(e:Exception) { notice=e.message ?: "Não foi possível abrir o arquivo." } }}) { Text("Abrir") }
-                            TextButton(onClick={scope.launch { try { mediaStore.delete(item.uri);repository.deleteMedia(item);notice="Arquivo privado excluído." } catch(e:Exception) { notice="Falha ao excluir arquivo." } }}) { Text("Excluir") }
+                        Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            if(item.mimeType.startsWith("image/")) SecureImagePreview(mediaStore,item.uri,Modifier.fillMaxWidth().height(190.dp))
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) { Text(item.displayName,color=White,fontWeight=FontWeight.Bold);Text(item.mimeType,color=Muted,fontSize=11.sp) }
+                                TextButton(onClick={downloadTarget=item;onExternalPickerState(true);downloadLauncher.launch(item.displayName)}) { Text("Baixar") }
+                                TextButton(onClick={scope.launch { try { mediaStore.delete(item.uri);repository.deleteMedia(item);notice="Arquivo privado excluído." } catch(e:Exception) { notice="Falha ao excluir arquivo." } }}) { Text("Excluir") }
+                            }
                         }
                     } }
                     item { OutlinedButton(onClick={showAlbum=true},modifier=Modifier.fillMaxWidth()) { Text("Criar álbum") } }
                 }
             }
+            "IA" -> OfflineAssistantScreen(posts,media,vault)
             "Cofre" -> {
                 Row(Modifier.fillMaxWidth().padding(vertical=14.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                     Text("Cofre privado",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold)
@@ -390,6 +417,93 @@ private fun PostList(list:List<PostEntity>,repository:PrivateRepository,scope:ko
     }
 }
 
+
+private suspend fun decodePreviewBytes(bytes: ByteArray): Bitmap? = withContext(Dispatchers.IO) {
+    try {
+        val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }
+        BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+        if(bounds.outWidth<=0 || bounds.outHeight<=0) return@withContext null
+        var sample=1
+        while(bounds.outWidth/sample>1200 || bounds.outHeight/sample>1200) sample*=2
+        val options=BitmapFactory.Options().apply { inSampleSize=sample }
+        BitmapFactory.decodeByteArray(bytes,0,bytes.size,options)
+    } finally { bytes.fill(0) }
+}
+
+private fun decodePreviewUri(context: android.content.Context, uri: Uri): Bitmap? {
+    val bounds=BitmapFactory.Options().apply { inJustDecodeBounds=true }
+    context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it,null,bounds) }
+    if(bounds.outWidth<=0 || bounds.outHeight<=0) return null
+    var sample=1
+    while(bounds.outWidth/sample>1200 || bounds.outHeight/sample>1200) sample*=2
+    val options=BitmapFactory.Options().apply { inSampleSize=sample }
+    return context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it,null,options) }
+}
+
+@Composable
+private fun SecureImagePreview(mediaStore: PrivateMediaStore, reference: String, modifier: Modifier = Modifier) {
+    val bitmap by produceState<Bitmap?>(null,reference) {
+        value=runCatching { decodePreviewBytes(mediaStore.readBytes(reference)) }.getOrNull()
+    }
+    if(bitmap!=null) Image(bitmap!!.asImageBitmap(),contentDescription="Prévia da imagem",modifier=modifier,contentScale=ContentScale.Crop)
+    else Box(modifier,contentAlignment=Alignment.Center) { Text("Prévia indisponível",color=Muted,fontSize=12.sp) }
+}
+
+@Composable
+private fun SelectedImagePreview(uri: Uri, modifier: Modifier = Modifier) {
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val bitmap by produceState<Bitmap?>(null,uri) {
+        value=withContext(Dispatchers.IO) { runCatching { decodePreviewUri(context,uri) }.getOrNull() }
+    }
+    if(bitmap!=null) Image(bitmap!!.asImageBitmap(),contentDescription="Prévia da foto selecionada",modifier=modifier,contentScale=ContentScale.Crop)
+}
+
+@Composable
+private fun OfflineAssistantScreen(posts: List<PostEntity>, media: List<MediaEntity>, vault: List<VaultItemEntity>) {
+    var prompt by remember { mutableStateOf("") }
+    val messages=remember { mutableStateListOf("Olá! Sou o assistente local do secret. Posso pesquisar seus conteúdos e explicar funções do aplicativo sem internet.") }
+    Column(Modifier.fillMaxSize().padding(top=14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+        Text("Assistente offline",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold)
+        Text("Funciona sem API e sem conexão. Nesta versão, usa comandos locais e pesquisa; não é um modelo generativo.",color=Muted,fontSize=12.sp)
+        LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            items(messages) { message -> Card(colors=CardDefaults.cardColors(containerColor=Panel),modifier=Modifier.fillMaxWidth()) {
+                Text(message,color=White,modifier=Modifier.padding(12.dp))
+            } }
+        }
+        OutlinedTextField(value=prompt,onValueChange={prompt=it},modifier=Modifier.fillMaxWidth(),label={Text("Pergunte ou digite: buscar fotos, backup, segurança...")})
+        Button(onClick={
+            val q=prompt.trim()
+            if(q.isNotBlank()) {
+                messages.add("Você: $q")
+                messages.add("secret: ${offlineAssistantReply(q,posts,media,vault)}")
+                prompt=""
+            }
+        },modifier=Modifier.fillMaxWidth()) { Text("Enviar") }
+    }
+}
+
+private fun offlineAssistantReply(query: String, posts: List<PostEntity>, media: List<MediaEntity>, vault: List<VaultItemEntity>): String {
+    val q=query.lowercase()
+    return when {
+        "buscar " in q || "pesquisar " in q -> {
+            val term=q.substringAfter("buscar ",q.substringAfter("pesquisar ")).trim()
+            if(term.isBlank()) "Digite o termo que deseja encontrar."
+            else {
+                val foundPosts=posts.filter { listOf(it.title,it.body,it.caption,it.category).any { value -> value.contains(term,true) } }.take(5)
+                val foundFiles=media.filter { it.displayName.contains(term,true) }.take(5)
+                val foundVault=vault.filter { it.title.contains(term,true) || it.content.contains(term,true) }.take(5)
+                "Encontrei ${foundPosts.size} publicação(ões), ${foundFiles.size} arquivo(s) e ${foundVault.size} item(ns) no cofre para “$term”."
+            }
+        }
+        "quant" in q || "resumo" in q || "conteúdo" in q -> "Seu secret tem ${posts.size} publicação(ões), ${media.size} arquivo(s) na galeria e ${vault.size} item(ns) no cofre."
+        "backup" in q -> "Abra Ajustes e toque em Exportar backup. Crie uma senha forte com pelo menos 10 caracteres e guarde-a: ela será necessária para restaurar o arquivo."
+        "segurança" in q || "senha" in q || "pin" in q -> "O acesso usa PIN, verificação adicional e, se configurada, biometria. Mantenha o código de recuperação e a senha do backup em local seguro."
+        "foto" in q || "imagem" in q || "galeria" in q -> "Abra a aba Galeria e toque em Adicionar. As imagens ficam criptografadas no armazenamento privado; a prévia aparece dentro do aplicativo."
+        "ajuda" in q || "o que você faz" in q -> "Posso pesquisar publicações, arquivos e itens do cofre; contar seus conteúdos; e orientar sobre galeria, segurança e backup. Experimente: “buscar escola” ou “quantos arquivos tenho?”."
+        else -> "Ainda não tenho um modelo de linguagem generativo instalado. Posso ajudar com comandos locais: “buscar [termo]”, “quantos arquivos tenho?”, “como faço backup?” ou “como funciona a segurança?”."
+    }
+}
+
 @Composable
 private fun EmptyCard(title:String,description:String) {
     Card(colors=CardDefaults.cardColors(containerColor=Panel),modifier=Modifier.fillMaxWidth()) {
@@ -418,6 +532,17 @@ private fun PostDialog(onDismiss:()->Unit,onExternalPickerState:(Boolean)->Unit,
             OutlinedTextField(caption,{caption=it},label={Text("Legenda (opcional)")})
             OutlinedTextField(category,{category=it},label={Text("Categoria")},singleLine=true)
             OutlinedButton(onClick={onExternalPickerState(true);picker.launch(arrayOf("*/*"))}) { Text("Anexar fotos/documentos (${attachments.size})") }
+            attachments.forEach { uri ->
+                val mime=context.contentResolver.getType(uri).orEmpty()
+                if(mime.startsWith("image/")) {
+                    SelectedImagePreview(uri,Modifier.fillMaxWidth().height(120.dp))
+                } else {
+                    Text(context.contentResolver.query(uri,null,null,null,null)?.use { cursor ->
+                        val index=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if(index>=0 && cursor.moveToFirst()) cursor.getString(index) else "Anexo selecionado"
+                    } ?: "Anexo selecionado",color=Muted,fontSize=12.sp)
+                }
+            }
         }
     },confirmButton={TextButton(onClick={onSave(title,body,category,caption,attachments.joinToString("|") { it.toString() })}) { Text("Salvar") }},dismissButton={TextButton(onClick=onDismiss) { Text("Cancelar") }})
 }
