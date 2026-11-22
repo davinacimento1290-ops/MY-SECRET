@@ -14,10 +14,13 @@ import javax.crypto.spec.SecretKeySpec
 import javax.crypto.SecretKey
 import javax.crypto.spec.PBEKeySpec
 import com.mysecret.app.data.local.PrivateDao
+import com.mysecret.app.security.PrivateMediaStore
+import android.util.Base64
 
 class EncryptedBackupManager(private val context: Context, private val dao: PrivateDao) {
     private val magic = "MYSECRET2".toByteArray(Charsets.US_ASCII)
     private val iterations = 310_000
+    private val mediaStore = PrivateMediaStore(context)
 
     private fun derive(password: CharArray, salt: ByteArray): SecretKey {
         require(password.size >= 10) { "A senha do backup deve ter pelo menos 10 caracteres." }
@@ -41,10 +44,16 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
         root.put("albums",JSONArray().apply {
             dao.allAlbums().forEach { a -> put(JSONObject().put("name",a.name).put("description",a.description).put("createdAt",a.createdAt)) }
         })
-        root.put("media",JSONArray().apply {
-            dao.allMedia().forEach { m -> put(JSONObject().put("uri",m.uri).put("displayName",m.displayName)
-                .put("mimeType",m.mimeType).put("albumId",m.albumId).put("addedAt",m.addedAt)) }
-        })
+        val mediaArray=JSONArray()
+        for(m in dao.allMedia()) {
+            val clearBytes=mediaStore.exportBytes(m.uri)
+            require(clearBytes.size <= 50_000_000) { "Anexo muito grande para o backup." }
+            mediaArray.put(JSONObject().put("displayName",m.displayName).put("mimeType",m.mimeType)
+                .put("albumId",m.albumId).put("addedAt",m.addedAt)
+                .put("bytes",Base64.encodeToString(clearBytes,Base64.NO_WRAP)))
+            clearBytes.fill(0)
+        }
+        root.put("media",mediaArray)
         val salt=ByteArray(16).also { SecureRandom().nextBytes(it) }
         val cipher=Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE,derive(password,salt))
@@ -105,7 +114,10 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
         }
         for(i in 0 until media.length()) {
             val m=media.getJSONObject(i)
-            dao.saveMedia(com.mysecret.app.data.local.MediaEntity(uri=m.getString("uri"),displayName=m.optString("displayName"),
+            val clearBytes=Base64.decode(m.getString("bytes"),Base64.NO_WRAP)
+            val privateReference=mediaStore.restoreBytes(clearBytes)
+            clearBytes.fill(0)
+            dao.saveMedia(com.mysecret.app.data.local.MediaEntity(uri=privateReference,displayName=m.optString("displayName"),
                 mimeType=m.optString("mimeType"),albumId=if(m.isNull("albumId")) null else m.optLong("albumId"),addedAt=m.optLong("addedAt")))
         }
     }
