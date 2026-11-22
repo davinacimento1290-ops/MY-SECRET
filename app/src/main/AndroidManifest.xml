@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <application
         android:allowBackup="false"
-        android:label="MY SECRET"
+        android:label="secret"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <provider
