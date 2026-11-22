@@ -60,13 +60,13 @@ private fun MySecretRoot() {
     var recoverMode by remember { mutableStateOf(false) }
     var recoveryInput by remember { mutableStateOf("") }
     var newPin by remember { mutableStateOf("") }
+    var unlocked by remember { mutableStateOf(false) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) unlocked = false }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    var unlocked by remember { mutableStateOf(false) }
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
