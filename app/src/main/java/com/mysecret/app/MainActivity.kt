@@ -346,7 +346,7 @@ private fun PrivateWorkspace(onLock: () -> Unit, onExternalPickerState: (Boolean
                 TextButton(onClick=onLock) { Text("Bloquear aplicativo") }
             }
         }
-        Spacer(Modifier.weight(1f))
+        if(tab!="IA" && tab!="Finanças") Spacer(Modifier.weight(1f))
         Text("Armazenamento local • secret",color=Muted,fontSize=11.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(vertical=10.dp))
     }
     if(backupMode=="export") PasswordDialog("Criar senha do backup",backupPassword,backupPasswordConfirm,{backupPassword=it},{backupPasswordConfirm=it},{
