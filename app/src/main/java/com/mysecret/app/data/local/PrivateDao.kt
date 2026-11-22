@@ -98,6 +98,9 @@ interface PrivateDao {
     @Delete
     suspend fun deleteFinanceGoal(item: FinanceGoalEntity)
 
+    @Query("UPDATE finance_goals SET savedCents = :savedCents WHERE id = :id")
+    suspend fun updateFinanceGoalSaved(id: Long, savedCents: Long)
+
     @Query("SELECT * FROM finance_goals ORDER BY createdAt ASC")
     suspend fun allFinanceGoals(): List<FinanceGoalEntity>
 
