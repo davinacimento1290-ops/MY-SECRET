@@ -165,7 +165,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
         }
     }
     val exportLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        if(uri!=null) scope.launch { try { backupManager?.exportTo(uri,backupPassword.toCharArray()); notice="Backup criptografado exportado." } catch(e:Exception) { notice=e.message ?: "Falha ao exportar backup." } }
+        if(uri!=null) scope.launch { try { backupManager?.exportTo(uri,backupPassword.toCharArray()); notice="Backup criptografado exportado." } catch(e:Exception) { notice=e.message ?: "Falha ao exportar backup." };backupPassword="";backupPasswordConfirm="" }
     }
     val importLauncher=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if(uri!=null) { restoreUri=uri; confirmRestore=true }
@@ -291,6 +291,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
 
 @Composable
 private fun PostList(list:List<PostEntity>,repository:PrivateRepository,scope:kotlinx.coroutines.CoroutineScope,onNotice:(String)->Unit) {
+    val context=androidx.compose.ui.platform.LocalContext.current
     LazyColumn(verticalArrangement=Arrangement.spacedBy(10.dp)) {
         if(list.isEmpty()) item { EmptyCard("Nada por aqui ainda","Crie uma publicação ou ajuste sua pesquisa.") }
         items(list,key={it.id}) { post ->
@@ -303,6 +304,16 @@ private fun PostList(list:List<PostEntity>,repository:PrivateRepository,scope:ko
                     Text(post.category,color=Accent,fontSize=11.sp)
                     if(post.body.isNotBlank()) Text(post.body,color=Muted,modifier=Modifier.padding(top=8.dp))
                     if(post.caption.isNotBlank()) Text(post.caption,color=Muted,fontSize=12.sp,modifier=Modifier.padding(top=6.dp))
+                    val attached=post.attachmentUris.split("|").filter { it.isNotBlank() }
+                    attached.forEachIndexed { index, rawUri ->
+                        TextButton(onClick={
+                            try {
+                                val uri=Uri.parse(rawUri)
+                                val mime=context.contentResolver.getType(uri) ?: "*/*"
+                                context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                            } catch(e:Exception) { onNotice("Não foi possível abrir o anexo.") }
+                        }) { Text("Abrir anexo ${index+1}") }
+                    }
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                         Text(DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(Date(post.createdAt)),color=Muted,fontSize=10.sp)
                         TextButton(onClick={scope.launch { repository.deletePost(post); onNotice("Publicação excluída.") }}) { Text("Excluir") }
