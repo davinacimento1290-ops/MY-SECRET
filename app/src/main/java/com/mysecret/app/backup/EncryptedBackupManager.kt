@@ -48,7 +48,7 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
         for(m in dao.allMedia()) {
             val clearBytes=mediaStore.exportBytes(m.uri)
             require(clearBytes.size <= 50_000_000) { "Anexo muito grande para o backup." }
-            mediaArray.put(JSONObject().put("displayName",m.displayName).put("mimeType",m.mimeType)
+            mediaArray.put(JSONObject().put("oldRef",m.uri).put("displayName",m.displayName).put("mimeType",m.mimeType)
                 .put("albumId",m.albumId).put("addedAt",m.addedAt)
                 .put("bytes",Base64.encodeToString(clearBytes,Base64.NO_WRAP)))
             clearBytes.fill(0)
@@ -103,10 +103,23 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
             decoded.fill(0)
         }
         dao.clearPosts(); dao.clearVault(); dao.clearAlbums(); dao.clearMedia()
+        val mediaRefMap=mutableMapOf<String,String>()
+        for(i in 0 until media.length()) {
+            val m=media.getJSONObject(i)
+            val clearBytes=Base64.decode(m.getString("bytes"),Base64.NO_WRAP)
+            val privateReference=mediaStore.restoreBytes(clearBytes)
+            clearBytes.fill(0)
+            val oldRef=m.optString("oldRef")
+            if(oldRef.isNotBlank()) mediaRefMap[oldRef]=privateReference
+            dao.saveMedia(com.mysecret.app.data.local.MediaEntity(uri=privateReference,displayName=m.optString("displayName"),
+                mimeType=m.optString("mimeType"),albumId=if(m.isNull("albumId")) null else m.optLong("albumId"),addedAt=m.optLong("addedAt")))
+        }
         for(i in 0 until posts.length()) {
             val p=posts.getJSONObject(i)
+            val remapped=p.optString("attachmentUris").split("|").filter { it.isNotBlank() }
+                .map { mediaRefMap[it] ?: it }.joinToString("|")
             dao.savePost(com.mysecret.app.data.local.PostEntity(title=p.getString("title"),body=p.getString("body"),
-                caption=p.optString("caption"),category=p.optString("category","Pessoal"),attachmentUris=p.optString("attachmentUris"),
+                caption=p.optString("caption"),category=p.optString("category","Pessoal"),attachmentUris=remapped,
                 createdAt=p.optLong("createdAt"),updatedAt=p.optLong("updatedAt"),favorite=p.optBoolean("favorite")))
         }
         for(i in 0 until vault.length()) {
@@ -117,14 +130,6 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
         for(i in 0 until albums.length()) {
             val a=albums.getJSONObject(i)
             dao.saveAlbum(com.mysecret.app.data.local.AlbumEntity(name=a.getString("name"),description=a.optString("description"),createdAt=a.optLong("createdAt")))
-        }
-        for(i in 0 until media.length()) {
-            val m=media.getJSONObject(i)
-            val clearBytes=Base64.decode(m.getString("bytes"),Base64.NO_WRAP)
-            val privateReference=mediaStore.restoreBytes(clearBytes)
-            clearBytes.fill(0)
-            dao.saveMedia(com.mysecret.app.data.local.MediaEntity(uri=privateReference,displayName=m.optString("displayName"),
-                mimeType=m.optString("mimeType"),albumId=if(m.isNull("albumId")) null else m.optLong("albumId"),addedAt=m.optLong("addedAt")))
         }
     }
 }
