@@ -54,6 +54,18 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
             clearBytes.fill(0)
         }
         root.put("media",mediaArray)
+        root.put("financeTransactions",JSONArray().apply {
+            dao.allFinanceTransactions().forEach { t -> put(JSONObject().put("title",t.title).put("amountCents",t.amountCents)
+                .put("type",t.type).put("category",t.category).put("occurredAt",t.occurredAt).put("note",t.note)) }
+        })
+        root.put("financeGoals",JSONArray().apply {
+            dao.allFinanceGoals().forEach { g -> put(JSONObject().put("title",g.title).put("targetCents",g.targetCents)
+                .put("savedCents",g.savedCents).put("dueAt",g.dueAt).put("createdAt",g.createdAt)) }
+        })
+        root.put("financeBills",JSONArray().apply {
+            dao.allFinanceBills().forEach { b -> put(JSONObject().put("title",b.title).put("amountCents",b.amountCents)
+                .put("dueAt",b.dueAt).put("paid",b.paid).put("category",b.category)) }
+        })
         val salt=ByteArray(16).also { SecureRandom().nextBytes(it) }
         val cipher=Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE,derive(password,salt))
@@ -92,6 +104,9 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
         val vault=root.getJSONArray("vault")
         val albums=root.getJSONArray("albums")
         val media=root.optJSONArray("media") ?: JSONArray()
+        val financeTransactions=root.optJSONArray("financeTransactions") ?: JSONArray()
+        val financeGoals=root.optJSONArray("financeGoals") ?: JSONArray()
+        val financeBills=root.optJSONArray("financeBills") ?: JSONArray()
         // Validate the complete payload before replacing the local data.
         for(i in 0 until posts.length()) require(posts.getJSONObject(i).has("title") && posts.getJSONObject(i).has("body"))
         for(i in 0 until vault.length()) require(vault.getJSONObject(i).has("title") && vault.getJSONObject(i).has("content"))
@@ -103,6 +118,7 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
             decoded.fill(0)
         }
         dao.clearPosts(); dao.clearVault(); dao.clearAlbums(); dao.clearMedia()
+        dao.clearFinanceTransactions(); dao.clearFinanceGoals(); dao.clearFinanceBills()
         val mediaRefMap=mutableMapOf<String,String>()
         for(i in 0 until media.length()) {
             val m=media.getJSONObject(i)
@@ -130,6 +146,21 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
         for(i in 0 until albums.length()) {
             val a=albums.getJSONObject(i)
             dao.saveAlbum(com.mysecret.app.data.local.AlbumEntity(name=a.getString("name"),description=a.optString("description"),createdAt=a.optLong("createdAt")))
+        }
+        for(i in 0 until financeTransactions.length()) {
+            val t=financeTransactions.getJSONObject(i)
+            dao.saveFinanceTransaction(com.mysecret.app.data.local.FinanceTransactionEntity(title=t.getString("title"),amountCents=t.getLong("amountCents"),
+                type=t.getString("type"),category=t.optString("category","Geral"),occurredAt=t.optLong("occurredAt"),note=t.optString("note")))
+        }
+        for(i in 0 until financeGoals.length()) {
+            val g=financeGoals.getJSONObject(i)
+            dao.saveFinanceGoal(com.mysecret.app.data.local.FinanceGoalEntity(title=g.getString("title"),targetCents=g.getLong("targetCents"),
+                savedCents=g.optLong("savedCents"),dueAt=if(g.isNull("dueAt")) null else g.optLong("dueAt"),createdAt=g.optLong("createdAt")))
+        }
+        for(i in 0 until financeBills.length()) {
+            val b=financeBills.getJSONObject(i)
+            dao.saveFinanceBill(com.mysecret.app.data.local.FinanceBillEntity(title=b.getString("title"),amountCents=b.getLong("amountCents"),
+                dueAt=b.getLong("dueAt"),paid=b.optBoolean("paid"),category=b.optString("category","Geral")))
         }
     }
 }
