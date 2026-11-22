@@ -275,8 +275,8 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
         val uri=restoreUri;confirmRestore=false;restoreUri=null;backupMode=""
         if(uri!=null) scope.launch { try { backupManager?.importFrom(uri,backupPassword.toCharArray());notice="Backup restaurado." } catch(e:Exception) { notice=e.message ?: "Senha incorreta ou backup inválido." };backupPassword="" }
     },{backupMode="";confirmRestore=false;restoreUri=null})
-    if(showPost) PostDialog(onDismiss={showPost=false},onSave={title,body,category,caption->
-        scope.launch { try { repository.addPost(title,body,category,caption); notice="Publicação salva."; } catch(e:Exception) { notice=e.message ?: "Falha ao salvar." } }
+    if(showPost) PostDialog(onDismiss={showPost=false},onSave={title,body,category,caption,attachments->
+        scope.launch { try { repository.addPost(title,body,category,caption,attachments); notice="Publicação salva."; } catch(e:Exception) { notice=e.message ?: "Falha ao salvar." } }
         showPost=false
     })
     if(showVault) VaultDialog(onDismiss={showVault=false},onSave={title,body,kind->
@@ -324,17 +324,24 @@ private fun EmptyCard(title:String,description:String) {
 }
 
 @Composable
-private fun PostDialog(onDismiss:()->Unit,onSave:(String,String,String,String)->Unit) {
+private fun PostDialog(onDismiss:()->Unit,onSave:(String,String,String,String,String)->Unit) {
     var title by remember { mutableStateOf("") }; var body by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("Pessoal") }; var caption by remember { mutableStateOf("") }
+    var attachments by remember { mutableStateOf(listOf<android.net.Uri>()) }
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { selected ->
+        selected.forEach { uri -> try { context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch(_:Exception) { } }
+        attachments=selected
+    }
     AlertDialog(onDismissRequest=onDismiss,title={Text("Nova publicação")},text={
         Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(title,{title=it},label={Text("Título")},singleLine=true)
             OutlinedTextField(body,{body=it},label={Text("Texto ou conteúdo")},minLines=3)
             OutlinedTextField(caption,{caption=it},label={Text("Legenda (opcional)")})
             OutlinedTextField(category,{category=it},label={Text("Categoria")},singleLine=true)
+            OutlinedButton(onClick={picker.launch(arrayOf("image/*","video/*","application/pdf","text/*"))}) { Text("Anexar fotos/documentos (${attachments.size})") }
         }
-    },confirmButton={TextButton(onClick={onSave(title,body,category,caption)}) { Text("Salvar") }},dismissButton={TextButton(onClick=onDismiss) { Text("Cancelar") }})
+    },confirmButton={TextButton(onClick={onSave(title,body,category,caption,attachments.joinToString("|") { it.toString() })}) { Text("Salvar") }},dismissButton={TextButton(onClick=onDismiss) { Text("Cancelar") }})
 }
 
 @Composable
