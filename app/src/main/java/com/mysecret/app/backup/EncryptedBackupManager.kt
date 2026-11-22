@@ -18,7 +18,7 @@ import com.mysecret.app.security.PrivateMediaStore
 import android.util.Base64
 
 class EncryptedBackupManager(private val context: Context, private val dao: PrivateDao) {
-    private val magic = "MYSECRET2".toByteArray(Charsets.US_ASCII)
+    private val magic = "MYSECRET3".toByteArray(Charsets.US_ASCII)
     private val iterations = 310_000
     private val mediaStore = PrivateMediaStore(context)
 
@@ -31,7 +31,7 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
     }
 
     suspend fun exportTo(uri: Uri, password: CharArray) {
-        val root=JSONObject().put("format",2).put("createdAt",System.currentTimeMillis())
+        val root=JSONObject().put("format",3).put("createdAt",System.currentTimeMillis())
         root.put("posts",JSONArray().apply {
             dao.allPosts().forEach { p -> put(JSONObject().put("title",p.title).put("body",p.body)
                 .put("caption",p.caption).put("category",p.category).put("attachmentUris",p.attachmentUris)
@@ -87,7 +87,7 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
             }
         } ?: error("Não foi possível abrir o backup.")
         val root=JSONObject(payload)
-        require(root.optInt("format")==2) { "Versão de backup incompatível." }
+        require(root.optInt("format")==3) { "Versão de backup incompatível." }
         val posts=root.getJSONArray("posts")
         val vault=root.getJSONArray("vault")
         val albums=root.getJSONArray("albums")
@@ -96,6 +96,12 @@ class EncryptedBackupManager(private val context: Context, private val dao: Priv
         for(i in 0 until posts.length()) require(posts.getJSONObject(i).has("title") && posts.getJSONObject(i).has("body"))
         for(i in 0 until vault.length()) require(vault.getJSONObject(i).has("title") && vault.getJSONObject(i).has("content"))
         for(i in 0 until albums.length()) require(albums.getJSONObject(i).has("name"))
+        for(i in 0 until media.length()) {
+            val encoded=media.getJSONObject(i).getString("bytes")
+            val decoded=Base64.decode(encoded,Base64.NO_WRAP)
+            require(decoded.size in 1..50_000_000) { "Anexo de backup inválido." }
+            decoded.fill(0)
+        }
         dao.clearPosts(); dao.clearVault(); dao.clearAlbums(); dao.clearMedia()
         for(i in 0 until posts.length()) {
             val p=posts.getJSONObject(i)
