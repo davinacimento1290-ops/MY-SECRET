@@ -73,4 +73,52 @@ interface PrivateDao {
 
     @Query("DELETE FROM albums")
     suspend fun clearAlbums()
+
+    @Query("SELECT * FROM finance_transactions ORDER BY occurredAt DESC")
+    fun observeFinanceTransactions(): Flow<List<FinanceTransactionEntity>>
+
+    @Insert
+    suspend fun saveFinanceTransaction(item: FinanceTransactionEntity): Long
+
+    @Delete
+    suspend fun deleteFinanceTransaction(item: FinanceTransactionEntity)
+
+    @Query("SELECT * FROM finance_transactions ORDER BY occurredAt ASC")
+    suspend fun allFinanceTransactions(): List<FinanceTransactionEntity>
+
+    @Query("DELETE FROM finance_transactions")
+    suspend fun clearFinanceTransactions()
+
+    @Query("SELECT * FROM finance_goals ORDER BY createdAt DESC")
+    fun observeFinanceGoals(): Flow<List<FinanceGoalEntity>>
+
+    @Insert
+    suspend fun saveFinanceGoal(item: FinanceGoalEntity): Long
+
+    @Delete
+    suspend fun deleteFinanceGoal(item: FinanceGoalEntity)
+
+    @Query("SELECT * FROM finance_goals ORDER BY createdAt ASC")
+    suspend fun allFinanceGoals(): List<FinanceGoalEntity>
+
+    @Query("DELETE FROM finance_goals")
+    suspend fun clearFinanceGoals()
+
+    @Query("SELECT * FROM finance_bills ORDER BY paid ASC, dueAt ASC")
+    fun observeFinanceBills(): Flow<List<FinanceBillEntity>>
+
+    @Insert
+    suspend fun saveFinanceBill(item: FinanceBillEntity): Long
+
+    @Query("UPDATE finance_bills SET paid = :paid WHERE id = :id")
+    suspend fun setFinanceBillPaid(id: Long, paid: Boolean)
+
+    @Delete
+    suspend fun deleteFinanceBill(item: FinanceBillEntity)
+
+    @Query("SELECT * FROM finance_bills ORDER BY dueAt ASC")
+    suspend fun allFinanceBills(): List<FinanceBillEntity>
+
+    @Query("DELETE FROM finance_bills")
+    suspend fun clearFinanceBills()
 }
