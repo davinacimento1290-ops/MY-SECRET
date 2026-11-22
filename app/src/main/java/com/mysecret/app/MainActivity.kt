@@ -1,6 +1,11 @@
 package com.mysecret.app
 
 import android.os.Bundle
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.mysecret.app.security.BiometricUnlock
+import com.mysecret.app.security.RecoveryCodeManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,7 +40,7 @@ private val Accent = Color(0xFF8B5CF6)
 private val Muted = Color(0xFFA3ADC0)
 private val White = Color(0xFFF7F7FB)
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { MySecretRoot() }
@@ -46,6 +51,18 @@ class MainActivity : ComponentActivity() {
 private fun MySecretRoot() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val auth = remember { LocalAuthManager(context) }
+    val recovery = remember { RecoveryCodeManager(context) }
+    val biometric = remember { BiometricUnlock(context as FragmentActivity) }
+    var recoveryCode by remember { mutableStateOf(recovery.createIfMissing()) }
+    var recoverMode by remember { mutableStateOf(false) }
+    var recoveryInput by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) unlocked = false }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var unlocked by remember { mutableStateOf(false) }
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
@@ -57,11 +74,23 @@ private fun MySecretRoot() {
                 Column(Modifier.fillMaxSize().padding(26.dp), horizontalAlignment=Alignment.CenterHorizontally, verticalArrangement=Arrangement.Center) {
                     Text("MY SECRET", color=White, fontSize=34.sp, fontWeight=FontWeight.Black)
                     Text(if (isSetup) "Crie seu acesso privado" else "Seu espaço pessoal", color=Muted, modifier=Modifier.padding(top=8.dp,bottom=28.dp))
+                    if(!recoverMode) {
                     OutlinedTextField(value=pin,onValueChange={if(it.length<=12 && it.all(Char::isDigit)) pin=it},label={Text("PIN de 4 a 12 números")},singleLine=true,visualTransformation=PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword))
                     if(isSetup) {
                         OutlinedTextField(value=confirmPin,onValueChange={if(it.length<=12 && it.all(Char::isDigit)) confirmPin=it},label={Text("Confirme o PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword),modifier=Modifier.padding(top=10.dp))
                     }
                     if(error.isNotBlank()) Text(error,color=Color(0xFFFF8585),modifier=Modifier.padding(top=10.dp))
+                    } else {
+                        OutlinedTextField(value=recoveryInput,onValueChange={recoveryInput=it},label={Text("Código de recuperação")},singleLine=true)
+                        OutlinedTextField(value=newPin,onValueChange={if(it.length<=12 && it.all(Char::isDigit)) newPin=it},label={Text("Novo PIN")},singleLine=true,visualTransformation=PasswordVisualTransformation())
+                        Button(onClick={
+                            if(recovery.verify(recoveryInput) && newPin.length in 4..12) {
+                                auth.configurePin(newPin.toCharArray()); recoveryCode=recovery.rotate()
+                                recoveryInput="";newPin="";recoverMode=false;unlocked=true;error=""
+                            } else error="Código inválido ou PIN fora do limite."
+                        },modifier=Modifier.fillMaxWidth().padding(top=8.dp)) { Text("Redefinir PIN") }
+                        TextButton(onClick={recoverMode=false}) { Text("Voltar") }
+                    }
                     Button(onClick={
                         try {
                             if(isSetup) {
@@ -74,6 +103,17 @@ private fun MySecretRoot() {
                             pin=""; confirmPin=""
                         } catch(e:Exception) { error=e.message ?: "Não foi possível configurar o acesso." }
                     },modifier=Modifier.fillMaxWidth().padding(top=18.dp),shape=RoundedCornerShape(14.dp)) { Text(if(isSetup) "Criar acesso" else "Desbloquear") }
+                    if(!isSetup && !recoverMode && biometric.canUse()) OutlinedButton(onClick={
+                        biometric.authenticate { ok, msg -> if(ok) unlocked=true else if(!msg.isNullOrBlank() && !msg.contains("cancel",true)) error=msg }
+                    },modifier=Modifier.fillMaxWidth().padding(top=8.dp)) { Text("Desbloquear com biometria") }
+                    if(!isSetup && !recoverMode) TextButton(onClick={recoverMode=true;error=""}) { Text("Esqueci meu PIN") }
+                    if(recoveryCode!=null) Card(Modifier.fillMaxWidth().padding(top=10.dp),colors=CardDefaults.cardColors(containerColor=Panel)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("CÓDIGO DE RECUPERAÇÃO — GUARDE EM LOCAL SEGURO",color=Color(0xFFFFD180),fontSize=11.sp,fontWeight=FontWeight.Bold)
+                            Text(recoveryCode!!,color=White,fontWeight=FontWeight.Bold,modifier=Modifier.padding(vertical=6.dp))
+                            TextButton(onClick={recoveryCode=null}) { Text("Já guardei") }
+                        }
+                    }
                     Text("Os dados ficam no armazenamento local do aparelho.",color=Muted,fontSize=12.sp,modifier=Modifier.padding(top=20.dp))
                 }
             } else {
