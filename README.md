@@ -1,4 +1,4 @@
-# MY SECRET
+# secret
 
 Aplicativo Android privado para organizar publicações, anexos, notas, favoritos, álbuns e arquivos localmente.
 
