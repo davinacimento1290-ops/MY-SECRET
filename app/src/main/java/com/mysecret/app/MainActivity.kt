@@ -65,13 +65,16 @@ private fun MySecretRoot() {
     var pendingSecondFactor by remember { mutableStateOf(false) }
     var secretAnswer by remember { mutableStateOf("") }
     var backgroundAt by remember { mutableLongStateOf(0L) }
+    var externalPickerActive by remember { mutableStateOf(false) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> backgroundAt = System.currentTimeMillis()
+                Lifecycle.Event.ON_STOP -> {
+                    backgroundAt = if (externalPickerActive) 0L else System.currentTimeMillis()
+                }
                 Lifecycle.Event.ON_START -> {
-                    if (backgroundAt > 0L) {
+                    if (!externalPickerActive && backgroundAt > 0L) {
                         if (System.currentTimeMillis() - backgroundAt >= 5L * 60L * 1000L) {
                             unlocked = false
                             pendingSecondFactor = false
@@ -94,7 +97,7 @@ private fun MySecretRoot() {
         Surface(Modifier.fillMaxSize(), color=Night) {
             if (!unlocked) {
                 Column(Modifier.fillMaxSize().padding(26.dp), horizontalAlignment=Alignment.CenterHorizontally, verticalArrangement=Arrangement.Center) {
-                    Text("MY SECRET", color=White, fontSize=34.sp, fontWeight=FontWeight.Black)
+                    Text("secret", color=White, fontSize=34.sp, fontWeight=FontWeight.Black)
                     Text(if (isSetup) "Crie seu acesso privado" else "Seu espaço pessoal", color=Muted, modifier=Modifier.padding(top=8.dp,bottom=28.dp))
                     if (pendingSecondFactor) {
                         Text("VERIFICAÇÃO ADICIONAL",color=Accent,fontSize=13.sp,fontWeight=FontWeight.Bold)
@@ -164,14 +167,17 @@ private fun MySecretRoot() {
                     Text("Os dados ficam no armazenamento local do aparelho.",color=Muted,fontSize=12.sp,modifier=Modifier.padding(top=20.dp))
                 }
             } else {
-                PrivateWorkspace(onLock={unlocked=false;pin="";pendingSecondFactor=false;secretAnswer=""})
+                PrivateWorkspace(
+                    onLock={unlocked=false;pin="";pendingSecondFactor=false;secretAnswer=""},
+                    onExternalPickerState={ externalPickerActive = it }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun PrivateWorkspace(onLock: () -> Unit) {
+private fun PrivateWorkspace(onLock: () -> Unit, onExternalPickerState: (Boolean) -> Unit) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val database=remember { PrivateDatabase.get(context) }
     val repository=remember { PrivateRepository(database.privateDao()) }
@@ -197,6 +203,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
     var backupMode by remember { mutableStateOf("") }
     LaunchedEffect(database) { backupManager=EncryptedBackupManager(context,database.privateDao()) }
     val mediaPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        onExternalPickerState(false)
         uris.forEach { uri ->
             try {
                 try { context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_:Exception) { }
@@ -210,16 +217,18 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
         }
     }
     val exportLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        onExternalPickerState(false)
         if(uri!=null) scope.launch { try { backupManager?.exportTo(uri,backupPassword.toCharArray()); notice="Backup criptografado exportado." } catch(e:Exception) { notice=e.message ?: "Falha ao exportar backup." };backupPassword="";backupPasswordConfirm="" }
     }
     val importLauncher=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        onExternalPickerState(false)
         if(uri!=null) { restoreUri=uri; confirmRestore=true }
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal=18.dp)) {
         Row(Modifier.fillMaxWidth().padding(top=18.dp,bottom=14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
             Column {
-                Text("MY SECRET",color=White,fontSize=26.sp,fontWeight=FontWeight.Black)
+                Text("secret",color=White,fontSize=26.sp,fontWeight=FontWeight.Black)
                 Text("Seu espaço privado",color=Muted,fontSize=12.sp)
             }
             TextButton(onClick=onLock) { Text("Bloquear") }
@@ -252,7 +261,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
             "Galeria" -> {
                 Row(Modifier.fillMaxWidth().padding(vertical=12.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                     Text("Galeria privada",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold)
-                    Button(onClick={mediaPicker.launch(arrayOf("*/*"))}) { Text("Adicionar") }
+                    Button(onClick={onExternalPickerState(true);mediaPicker.launch(arrayOf("*/*"))}) { Text("Adicionar") }
                 }
                 LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     item { Text("Álbuns",color=Accent,fontWeight=FontWeight.Bold) }
@@ -305,22 +314,22 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
                 Text("Backup criptografado",color=White,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=18.dp,bottom=8.dp))
                 Text("Backup AES-GCM protegido por senha definida por você; pode ser restaurado em outro aparelho.",color=Muted,fontSize=12.sp)
                 Button(onClick={backupMode="export";backupPassword="";backupPasswordConfirm=""},modifier=Modifier.padding(top=8.dp)) { Text("Exportar backup") }
-                OutlinedButton(onClick={backupMode="import";backupPassword="";importLauncher.launch(arrayOf("application/octet-stream","application/*"))},modifier=Modifier.padding(top=8.dp)) { Text("Restaurar backup") }
+                OutlinedButton(onClick={backupMode="import";backupPassword="";onExternalPickerState(true);importLauncher.launch(arrayOf("application/octet-stream","application/*"))},modifier=Modifier.padding(top=8.dp)) { Text("Restaurar backup") }
                 TextButton(onClick=onLock) { Text("Bloquear aplicativo") }
             }
         }
         Spacer(Modifier.weight(1f))
-        Text("Armazenamento local • MY SECRET",color=Muted,fontSize=11.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(vertical=10.dp))
+        Text("Armazenamento local • secret",color=Muted,fontSize=11.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(vertical=10.dp))
     }
     if(backupMode=="export") PasswordDialog("Criar senha do backup",backupPassword,backupPasswordConfirm,{backupPassword=it},{backupPasswordConfirm=it},{
         if(backupPassword.length<10 || backupPassword!=backupPasswordConfirm) notice="As senhas devem ser iguais e ter pelo menos 10 caracteres."
-        else { backupMode="";exportLauncher.launch("MY_SECRET_backup.mys") }
+        else { backupMode="";onExternalPickerState(true);exportLauncher.launch("secret_backup.mys") }
     },{backupMode=""})
     if(backupMode=="import" && confirmRestore && restoreUri!=null) PasswordDialog("Senha do backup",backupPassword,backupPassword,{backupPassword=it},{backupPassword=it},{
         val uri=restoreUri;confirmRestore=false;restoreUri=null;backupMode=""
         if(uri!=null) scope.launch { try { backupManager?.importFrom(uri,backupPassword.toCharArray());notice="Backup restaurado." } catch(e:Exception) { notice=e.message ?: "Senha incorreta ou backup inválido." };backupPassword="" }
     },{backupMode="";confirmRestore=false;restoreUri=null})
-    if(showPost) PostDialog(onDismiss={showPost=false},onSave={title,body,category,caption,attachments->
+    if(showPost) PostDialog(onDismiss={showPost=false},onExternalPickerState=onExternalPickerState,onSave={title,body,category,caption,attachments->
         scope.launch { try {
             val secureRefs=attachments.split("|").filter { it.isNotBlank() }.map { raw ->
                 val uri=Uri.parse(raw)
@@ -392,12 +401,13 @@ private fun EmptyCard(title:String,description:String) {
 }
 
 @Composable
-private fun PostDialog(onDismiss:()->Unit,onSave:(String,String,String,String,String)->Unit) {
+private fun PostDialog(onDismiss:()->Unit,onExternalPickerState:(Boolean)->Unit,onSave:(String,String,String,String,String)->Unit) {
     var title by remember { mutableStateOf("") }; var body by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("Pessoal") }; var caption by remember { mutableStateOf("") }
     var attachments by remember { mutableStateOf(listOf<android.net.Uri>()) }
     val context=androidx.compose.ui.platform.LocalContext.current
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { selected ->
+        onExternalPickerState(false)
         selected.forEach { uri -> try { context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch(_:Exception) { /* O acesso temporário ainda permite copiar o arquivo ao salvar. */ } }
         attachments=selected
     }
@@ -407,7 +417,7 @@ private fun PostDialog(onDismiss:()->Unit,onSave:(String,String,String,String,St
             OutlinedTextField(body,{body=it},label={Text("Texto ou conteúdo")},minLines=3)
             OutlinedTextField(caption,{caption=it},label={Text("Legenda (opcional)")})
             OutlinedTextField(category,{category=it},label={Text("Categoria")},singleLine=true)
-            OutlinedButton(onClick={picker.launch(arrayOf("*/*"))}) { Text("Anexar fotos/documentos (${attachments.size})") }
+            OutlinedButton(onClick={onExternalPickerState(true);picker.launch(arrayOf("*/*"))}) { Text("Anexar fotos/documentos (${attachments.size})") }
         }
     },confirmButton={TextButton(onClick={onSave(title,body,category,caption,attachments.joinToString("|") { it.toString() })}) { Text("Salvar") }},dismissButton={TextButton(onClick=onDismiss) { Text("Cancelar") }})
 }
