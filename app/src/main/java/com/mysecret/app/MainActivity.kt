@@ -1,6 +1,9 @@
 package com.mysecret.app
 
 import android.os.Bundle
+import android.content.Intent
+import android.provider.OpenableColumns
+import android.net.Uri
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -132,6 +135,7 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
     val favorites by repository.favorites.collectAsStateWithLifecycle(initialValue=emptyList())
     val vault by repository.vault.collectAsStateWithLifecycle(initialValue=emptyList())
     val albums by repository.albums.collectAsStateWithLifecycle(initialValue=emptyList())
+    val media by repository.media.collectAsStateWithLifecycle(initialValue=emptyList())
     val scope= rememberCoroutineScope()
     var tab by remember { mutableStateOf("Feed") }
     var search by remember { mutableStateOf("") }
@@ -147,6 +151,19 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
     var backupPasswordConfirm by remember { mutableStateOf("") }
     var backupMode by remember { mutableStateOf("") }
     LaunchedEffect(database) { backupManager=EncryptedBackupManager(context,database.privateDao()) }
+    val mediaPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach { uri ->
+            try {
+                context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val displayName=context.contentResolver.query(uri,null,null,null,null)?.use { cursor ->
+                    val index=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if(index>=0 && cursor.moveToFirst()) cursor.getString(index) else "Arquivo"
+                } ?: "Arquivo"
+                val mime=context.contentResolver.getType(uri) ?: "application/octet-stream"
+                scope.launch { try { repository.addMedia(uri.toString(),displayName,mime);notice="Arquivo adicionado à galeria." } catch(e:Exception) { notice=e.message ?: "Falha ao adicionar." } }
+            } catch(e:Exception) { notice="Não foi possível manter acesso ao arquivo." }
+        }
+    }
     val exportLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if(uri!=null) scope.launch { try { backupManager?.exportTo(uri,backupPassword.toCharArray()); notice="Backup criptografado exportado." } catch(e:Exception) { notice=e.message ?: "Falha ao exportar backup." } }
     }
@@ -188,19 +205,26 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
                 PostList(list,repository,scope,{notice=it})
             }
             "Galeria" -> {
-                Row(Modifier.fillMaxWidth().padding(vertical=14.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                    Text("Álbuns",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold)
-                    Button(onClick={showAlbum=true}) { Text("Novo álbum") }
+                Row(Modifier.fillMaxWidth().padding(vertical=12.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
+                    Text("Galeria privada",color=White,fontSize=20.sp,fontWeight=FontWeight.Bold)
+                    Button(onClick={mediaPicker.launch(arrayOf("image/*","video/*","application/pdf","text/*"))}) { Text("Adicionar") }
                 }
-                LazyColumn(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                    if(albums.isEmpty()) item { EmptyCard("Sua galeria começa aqui","Crie álbuns para organizar suas coleções.") }
-                    items(albums,key={it.id}) { album -> Card(colors=CardDefaults.cardColors(containerColor=Panel),modifier=Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("▣  "+album.name,color=White,fontWeight=FontWeight.Bold)
-                            if(album.description.isNotBlank()) Text(album.description,color=Muted,modifier=Modifier.padding(top=4.dp))
-                            Text(DateFormat.getDateInstance().format(Date(album.createdAt)),color=Muted,fontSize=11.sp,modifier=Modifier.padding(top=8.dp))
+                LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    item { Text("Álbuns",color=Accent,fontWeight=FontWeight.Bold) }
+                    if(albums.isEmpty()) item { EmptyCard("Sem álbuns","Crie um álbum para organizar sua coleção.") }
+                    items(albums,key={it.id}) { album -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Panel)) {
+                        Column(Modifier.padding(14.dp)) { Text(album.name,color=White,fontWeight=FontWeight.Bold);Text(album.description,color=Muted) }
+                    } }
+                    item { Text("Fotos, vídeos e documentos",color=Accent,fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=10.dp)) }
+                    if(media.isEmpty()) item { EmptyCard("Galeria vazia","Adicione arquivos usando o seletor seguro do Android.") }
+                    items(media,key={it.id+1000000L}) { item -> Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Panel)) {
+                        Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f)) { Text(item.displayName,color=White,fontWeight=FontWeight.Bold);Text(item.mimeType,color=Muted,fontSize=11.sp) }
+                            TextButton(onClick={try { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(item.uri),item.mimeType).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) } catch(e:Exception) { notice="Não foi possível abrir o arquivo." }}) { Text("Abrir") }
+                            TextButton(onClick={scope.launch { repository.deleteMedia(item);notice="Arquivo removido da galeria." }}) { Text("Excluir") }
                         }
                     } }
+                    item { OutlinedButton(onClick={showAlbum=true},modifier=Modifier.fillMaxWidth()) { Text("Criar álbum") } }
                 }
             }
             "Cofre" -> {
@@ -242,19 +266,6 @@ private fun PrivateWorkspace(onLock: () -> Unit) {
         }
         Spacer(Modifier.weight(1f))
         Text("Armazenamento local • MY SECRET",color=Muted,fontSize=11.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(vertical=10.dp))
-    }
-    if(confirmRestore && restoreUri!=null) {
-        AlertDialog(
-            onDismissRequest={confirmRestore=false;restoreUri=null},
-            title={Text("Substituir dados atuais?")},
-            text={Text("A restauração substitui publicações, itens do cofre e álbuns existentes. Faça um backup antes de continuar.")},
-            confirmButton={TextButton(onClick={
-                val uri=restoreUri
-                confirmRestore=false;restoreUri=null
-                if(uri!=null) scope.launch { try { backupManager?.importFrom(uri,backupPassword.toCharArray()); notice="Backup restaurado." } catch(e:Exception) { notice=e.message ?: "Falha ao restaurar backup." } }
-            }) { Text("Restaurar") }},
-            dismissButton={TextButton(onClick={confirmRestore=false;restoreUri=null}) { Text("Cancelar") }}
-        )
     }
     if(backupMode=="export") PasswordDialog("Criar senha do backup",backupPassword,backupPasswordConfirm,{backupPassword=it},{backupPasswordConfirm=it},{
         if(backupPassword.length<10 || backupPassword!=backupPasswordConfirm) notice="As senhas devem ser iguais e ter pelo menos 10 caracteres."
